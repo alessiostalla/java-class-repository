@@ -1,0 +1,18 @@
+^profiles.xml
+^target
+^[^/]*/target
+^out/
+^[.]idea/
+^[.]iml/
+^.*/overlays/.*$
+derby.log
+syntax: glob
+*.DS_Store
+*.iml
+*.ipr
+*.iws
+*~
+*.bak
+*.orig
+*h2.db
+*trace.db
