@@ -12,7 +12,8 @@ public class ClassRepository {
 
     private static final Logger logger = LoggerFactory.getLogger(ClassRepository.class);
 
-    protected final List<ClassLoader> classLoaders = new ArrayList<ClassLoader>();
+    public final List<ClassLoader> classLoaders = new ArrayList<ClassLoader>();
+    public final List<ClassProvider> classProviders = new ArrayList<ClassProvider>();
 
     protected final Map<String, ClassCacheEntry> classCache = new HashMap<String, ClassCacheEntry>();
 
@@ -31,15 +32,23 @@ public class ClassRepository {
         long timestamp = System.currentTimeMillis();
         ClassCacheEntry classCacheEntry = classCache.get(className);
         if(classCacheEntry == null) {
-            classCacheEntry = loadClass(className);
+            classCacheEntry = loadClass(className, timestamp);
         } else if(classCacheEntry.shouldReload()) {
             classCacheEntry = classCacheEntry.reload(timestamp);
         }
         return classCacheEntry.loadedClass;
     }
 
-    protected ClassCacheEntry loadClass(String className) {
-        return null;  //To change body of created methods use File | Settings | File Templates.
+    protected ClassCacheEntry loadClass(String className, long timestamp) {
+        //TODO
+        for(ClassProvider provider : classProviders) {
+            Resource resource = provider.getResourceForClass(className);
+            if(resource.isClass()) {
+                Class theClass = resource.loadClass(this);
+                return new ClassCacheEntry(className, theClass, timestamp, provider);
+            }
+        }
+        return new ClassCacheEntry(className, null, timestamp, null); //TODO
     }
 
     protected class ClassCacheEntry {
