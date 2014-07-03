@@ -1,8 +1,10 @@
 package com.github.alessiostalla.javaclassrepo;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.io.InputStream;
 
-public interface Resource {
+public interface Resource extends Closeable {
 
     boolean exists();
 
@@ -13,5 +15,9 @@ public interface Resource {
     boolean isClass();
 
     Class loadClass(ClassRepository repository);
+
+    void close() throws IOException;
+
+    ClassProvider getProvider();
 
 }

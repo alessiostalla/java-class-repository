@@ -3,12 +3,13 @@ package com.github.alessiostalla.javaclassrepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ClassRepository {
+public class ClassRepository implements ClassProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(ClassRepository.class);
 
@@ -40,15 +41,43 @@ public class ClassRepository {
     }
 
     protected ClassCacheEntry loadClass(String className, long timestamp) {
-        //TODO
+        //TODO record dependencies
+        Resource resource = getResourceForClass(className);
+        try {
+            if (resource.isClass()) {
+                Class theClass = resource.loadClass(this);
+                return new ClassCacheEntry(className, theClass, timestamp, resource.getProvider());
+            }
+        } finally {
+            try {
+                resource.close();
+            } catch (IOException e) {
+                logger.warn("Could not close resource: " + resource, e);
+            }
+        }
+        return new ClassCacheEntry(className, null, timestamp, this);
+    }
+
+    @Override
+    public Resource getResourceForClass(String className) {
         for(ClassProvider provider : classProviders) {
             Resource resource = provider.getResourceForClass(className);
             if(resource.isClass()) {
-                Class theClass = resource.loadClass(this);
-                return new ClassCacheEntry(className, theClass, timestamp, provider);
+                return resource;
             }
         }
-        return new ClassCacheEntry(className, null, timestamp, null); //TODO
+        return new NonExistingResource(this);
+    }
+
+    @Override
+    public Resource getResource(String path) {
+        for(ClassProvider provider : classProviders) {
+            Resource resource = provider.getResource(path);
+            if(resource.exists()) {
+                return resource;
+            }
+        }
+        return new NonExistingResource(this);
     }
 
     protected class ClassCacheEntry {
@@ -56,6 +85,7 @@ public class ClassRepository {
         public final Class loadedClass;
         public final long timestamp;
         public final ClassProvider provider;
+        //TODO dependencies
 
         public ClassCacheEntry(String className, Class loadedClass, long timestamp, ClassProvider provider) {
             this.className = className;
