@@ -4,10 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ClassRepository implements ClassProvider {
 
@@ -19,11 +16,17 @@ public class ClassRepository implements ClassProvider {
     protected final Map<String, ClassCacheEntry> classCache = new HashMap<String, ClassCacheEntry>();
 
     public ClassRepository() {
-        classLoaders.add(getClass().getClassLoader());
+        this(true);
     }
 
-    public synchronized Class getClass(String className) {
-        for(ClassLoader classLoader : classLoaders) {
+    public ClassRepository(boolean includeDefaultClassLoaders) {
+        if(includeDefaultClassLoaders) {
+            classLoaders.add(getClass().getClassLoader());
+        }
+    }
+
+    public synchronized Class getClass(String className) throws ClassNotFoundException {
+        for (ClassLoader classLoader : classLoaders) {
             try {
                 return classLoader.loadClass(className);
             } catch (ClassNotFoundException e) {
@@ -32,15 +35,43 @@ public class ClassRepository implements ClassProvider {
         }
         long timestamp = System.currentTimeMillis();
         ClassCacheEntry classCacheEntry = classCache.get(className);
-        if(classCacheEntry == null) {
+        if (classCacheEntry == null) {
             classCacheEntry = loadClass(className, timestamp);
-        } else if(classCacheEntry.shouldReload()) {
+        } else if (classCacheEntry.shouldReload()) {
             classCacheEntry = classCacheEntry.reload(timestamp);
         }
-        return classCacheEntry.loadedClass;
+        return classCacheEntry.getLoadedClass();
     }
 
-    protected ClassCacheEntry loadClass(String className, long timestamp) {
+    public synchronized ClassRepository withClassLoaders(ListOperation<ClassLoader> op) {
+        op.execute(classLoaders);
+        return this;
+    }
+
+    public synchronized ClassRepository withClassProviders(ListOperation<ClassProvider> op) {
+        op.execute(classProviders);
+        return this;
+    }
+
+    public synchronized ClassRepository withClassLoaders(final ClassLoader... classLoaders) {
+        return withClassLoaders(new ListOperation<ClassLoader>() {
+            @Override
+            public void execute(List<ClassLoader> objects) {
+                objects.addAll(Arrays.asList(classLoaders));
+            }
+        });
+    }
+
+    public synchronized ClassRepository withClassProviders(final ClassProvider...classProviders) {
+        return withClassProviders(new ListOperation<ClassProvider>() {
+            @Override
+            public void execute(List<ClassProvider> objects) {
+                objects.addAll(Arrays.asList(classProviders));
+            }
+        });
+    }
+
+    protected ClassCacheEntry loadClass(String className, long timestamp) throws ClassNotFoundException {
         //TODO record dependencies
         Resource resource = getResourceForClass(className);
         try {
@@ -98,11 +129,19 @@ public class ClassRepository implements ClassProvider {
             return provider.getResourceForClass(className).isNewerThan(timestamp);
         }
 
-        public ClassCacheEntry reload(long timestamp) {
+        public ClassCacheEntry reload(long timestamp) throws ClassNotFoundException {
             Class newClass = provider.getResourceForClass(className).loadClass(ClassRepository.this);
             ClassCacheEntry newEntry = new ClassCacheEntry(className, newClass, timestamp, provider);
             classCache.put(className, newEntry);
             return newEntry;
+        }
+
+        public Class getLoadedClass() throws ClassNotFoundException {
+            if(loadedClass != null) {
+                return loadedClass;
+            } else {
+                throw new ClassNotFoundException("Class " + className + " was cached as not found");
+            }
         }
     }
 

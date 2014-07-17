@@ -9,6 +9,7 @@ import java.io.InputStream;
 public class NonExistingResource implements Resource {
 
     private final ClassProvider provider;
+    private String name;
 
     public NonExistingResource(ClassProvider provider) {
         this.provider = provider;
@@ -45,5 +46,13 @@ public class NonExistingResource implements Resource {
     @Override
     public ClassProvider getProvider() {
         return provider;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 }

@@ -14,10 +14,11 @@ public interface Resource extends Closeable {
 
     boolean isClass();
 
-    Class loadClass(ClassRepository repository);
+    Class loadClass(ClassRepository repository) throws ClassNotFoundException;
 
     void close() throws IOException;
 
     ClassProvider getProvider();
 
+    String getName();
 }
