@@ -14,7 +14,7 @@ public interface Resource extends Closeable {
 
     boolean isClass();
 
-    Class loadClass(ClassRepository repository) throws ClassNotFoundException;
+    Class[] loadClasses(ClassRepository repository) throws ClassNotFoundException;
 
     void close() throws IOException;
 

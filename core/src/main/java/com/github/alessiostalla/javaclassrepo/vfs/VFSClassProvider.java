@@ -17,16 +17,10 @@ public abstract class VFSClassProvider implements ClassProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(VFSClassProvider.class);
 
-    protected final FileSystem fileSystem;
     protected final FileObject root;
 
-    public VFSClassProvider(FileSystem fileSystem, FileObject root) {
-        this.fileSystem = fileSystem;
+    public VFSClassProvider(FileObject root) {
         this.root = root;
-    }
-
-    public VFSClassProvider(FileSystem fileSystem) throws FileSystemException {
-        this(fileSystem, fileSystem.getRoot());
     }
 
     @Override
@@ -50,7 +44,12 @@ public abstract class VFSClassProvider implements ClassProvider {
         return getResource(fileObject, className);
     }
 
+    public FileObject getRoot() {
+        return root;
+    }
+
     protected abstract VFSResource getResource(FileObject fileObject, String className);
 
     protected abstract String translateToPath(String className);
+
 }

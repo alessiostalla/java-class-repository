@@ -65,7 +65,11 @@ public abstract class VFSResource implements Resource {
 
     @Override
     public String getName() {
-        return fileObject.getName().getPath();
+        try {
+            return "/" + provider.getRoot().getName().getRelativeName(fileObject.getName());
+        } catch (FileSystemException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

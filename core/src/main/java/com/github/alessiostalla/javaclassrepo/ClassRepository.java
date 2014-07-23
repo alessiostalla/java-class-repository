@@ -36,12 +36,37 @@ public class ClassRepository implements ClassProvider {
         long timestamp = System.currentTimeMillis();
         ClassCacheEntry classCacheEntry = classCache.get(className);
         if (classCacheEntry == null) {
-            classCacheEntry = loadClass(className, timestamp);
+            loadClasses(className, timestamp);
+            classCacheEntry = classCache.get(className);
         } else if (classCacheEntry.shouldReload()) {
-            classCacheEntry = classCacheEntry.reload(timestamp);
+            classCacheEntry.reload(timestamp);
+            classCacheEntry = classCache.get(className);
         }
-        return classCacheEntry.getLoadedClass();
+        if(classCacheEntry != null) {
+            return classCacheEntry.getLoadedClass();
+        } else {
+            throw new ClassNotFoundException(className);
+        }
     }
+
+    /* TODO getClasses() by resource needs a different classCache (by resource name rather than by class name)
+    public synchronized Class[] getClasses(String path) throws ClassNotFoundException {
+        Resource resource = getResource(path);
+        long timestamp = System.currentTimeMillis();
+        ClassCacheEntry classCacheEntry = classCache.get(className);
+        if (classCacheEntry == null) {
+            loadClasses(className, timestamp);
+            classCacheEntry = classCache.get(className);
+        } else if (classCacheEntry.shouldReload()) {
+            classCacheEntry.reload(timestamp);
+            classCacheEntry = classCache.get(className);
+        }
+        if(classCacheEntry != null) {
+            return classCacheEntry.getLoadedClass();
+        } else {
+            throw new ClassNotFoundException(className);
+        }
+    }*/
 
     public synchronized ClassRepository withClassLoaders(ListOperation<ClassLoader> op) {
         op.execute(classLoaders);
@@ -71,13 +96,24 @@ public class ClassRepository implements ClassProvider {
         });
     }
 
-    protected ClassCacheEntry loadClass(String className, long timestamp) throws ClassNotFoundException {
-        //TODO record dependencies
+    protected Collection<ClassCacheEntry> loadClasses(String className, long timestamp) throws ClassNotFoundException {
         Resource resource = getResourceForClass(className);
+        return loadClasses(resource, timestamp);
+
+    }
+
+    protected Collection<ClassCacheEntry> loadClasses(Resource resource, long timestamp) throws ClassNotFoundException {
+        //TODO record dependencies
         try {
             if (resource.isClass()) {
-                Class theClass = resource.loadClass(this);
-                return new ClassCacheEntry(className, theClass, timestamp, resource.getProvider());
+                Class[] classes = resource.loadClasses(this);
+                List<ClassCacheEntry> entries = new ArrayList<ClassCacheEntry>(classes.length);
+                for(Class theClass : classes) {
+                    ClassCacheEntry entry = new ClassCacheEntry(theClass.getName(), theClass, timestamp, resource.getProvider());
+                    entries.add(entry);
+                    classCache.put(theClass.getName(), entry);
+                }
+                return entries;
             }
         } finally {
             try {
@@ -86,7 +122,7 @@ public class ClassRepository implements ClassProvider {
                 logger.warn("Could not close resource: " + resource, e);
             }
         }
-        return new ClassCacheEntry(className, null, timestamp, this);
+        throw new ClassNotFoundException("No class was found in resource " + resource);
     }
 
     @Override
@@ -129,11 +165,17 @@ public class ClassRepository implements ClassProvider {
             return provider.getResourceForClass(className).isNewerThan(timestamp);
         }
 
-        public ClassCacheEntry reload(long timestamp) throws ClassNotFoundException {
-            Class newClass = provider.getResourceForClass(className).loadClass(ClassRepository.this);
-            ClassCacheEntry newEntry = new ClassCacheEntry(className, newClass, timestamp, provider);
-            classCache.put(className, newEntry);
-            return newEntry;
+        public Collection<ClassCacheEntry> reload(long timestamp) throws ClassNotFoundException {
+            Class[] newClasses = provider.getResourceForClass(className).loadClasses(ClassRepository.this);
+            classCache.remove(className);
+            //TODO remove other old classes (so inners that no longer exist get garbage-collected)
+            List<ClassCacheEntry> newEntries = new ArrayList<ClassCacheEntry>(newClasses.length);
+            for(Class newClass : newClasses) {
+                ClassCacheEntry newEntry = new ClassCacheEntry(className, newClass, timestamp, provider);
+                classCache.put(className, newEntry);
+                newEntries.add(newEntry);
+            }
+            return newEntries;
         }
 
         public Class getLoadedClass() throws ClassNotFoundException {
@@ -145,18 +187,24 @@ public class ClassRepository implements ClassProvider {
         }
     }
 
-    public ClassLoader asClassLoader() {
-        return new ClassLoader() {
-            @Override
-            protected Class<?> findClass(String name) throws ClassNotFoundException {
-                Class<?> cls = ClassRepository.this.getClass(name);
-                if(cls != null) {
-                    return cls;
-                } else {
-                    throw new ClassNotFoundException(name);
-                }
+    public class ClassLoaderFacade extends ClassLoader {
+        @Override
+        protected Class<?> findClass(String name) throws ClassNotFoundException {
+            Class<?> cls = ClassRepository.this.getClass(name);
+            if(cls != null) {
+                return cls;
+            } else {
+                throw new ClassNotFoundException(name);
             }
-        };
+        }
+
+        public Class defineClass(String name, byte[] code) {
+            return super.defineClass(name, code, 0, code.length);
+        }
+    }
+
+    public ClassLoaderFacade asClassLoader() {
+        return new ClassLoaderFacade();
     }
 
 }

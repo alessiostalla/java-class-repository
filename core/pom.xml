@@ -39,4 +39,19 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>src/test/java</directory>
+                <targetPath>test-resources</targetPath>
+                <includes>
+                    <include>**/JavaClassProvidersTest.java</include>
+                </includes>
+            </resource>
+        </resources>
+    </build>
 </project>

@@ -36,8 +36,8 @@ public class NonExistingResource implements Resource {
     }
 
     @Override
-    public Class loadClass(ClassRepository repository) {
-        return null;
+    public Class[] loadClasses(ClassRepository repository) {
+        return new Class[0];
     }
 
     @Override

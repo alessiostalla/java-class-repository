@@ -17,12 +17,8 @@ import java.net.URLClassLoader;
  */
 public class CompiledJavaClassProvider extends VFSClassProvider {
 
-    public CompiledJavaClassProvider(FileSystem fileSystem) throws FileSystemException {
-        super(fileSystem);
-    }
-
-    public CompiledJavaClassProvider(FileSystem fileSystem, FileObject root) {
-        super(fileSystem, root);
+    public CompiledJavaClassProvider(FileObject root) {
+        super(root);
     }
 
     @Override
@@ -34,7 +30,7 @@ public class CompiledJavaClassProvider extends VFSClassProvider {
             }
 
             @Override
-            public Class loadClass(ClassRepository repository) throws ClassNotFoundException {
+            public Class[] loadClasses(ClassRepository repository) throws ClassNotFoundException {
                 ClassLoader classLoader = new URLClassLoader(new URL[0], repository.asClassLoader()) {
                     @Override
                     public Class<?> loadClass(String name) throws ClassNotFoundException {
@@ -50,7 +46,7 @@ public class CompiledJavaClassProvider extends VFSClassProvider {
                         }
                     }
                 };
-                return classLoader.loadClass(className);
+                return new Class[] { classLoader.loadClass(className) };
             }
         };
     }
