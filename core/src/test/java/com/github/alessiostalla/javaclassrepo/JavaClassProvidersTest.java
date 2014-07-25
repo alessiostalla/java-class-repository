@@ -17,24 +17,28 @@ public class JavaClassProvidersTest {
     @Test
     public void testCompiledJavaClassProvider() throws Exception {
         FileSystemManager manager = VFS.getManager();
-        FileObject fo = manager.resolveFile("ram://test/");
-        final CompiledJavaClassProvider compiledJavaClassProvider = new CompiledJavaClassProvider(fo);
-        assertEquals(compiledJavaClassProvider.getResource("foo").getName(), "/foo");
-        assertFalse(compiledJavaClassProvider.getResource("foo").exists());
-        //Let's create some classes...
-        Resource resource = compiledJavaClassProvider.getResourceForClass(getClass().getName());
-        FileObject fileObject = fo.resolveFile("/test" + resource.getName());
-        fileObject.createFile();
-        IOUtils.copy(getClass().getResourceAsStream(resource.getName()), fileObject.getContent().getOutputStream());
-        resource.close();
+        FileObject fo = manager.resolveFile("res://");
+        final CompiledJavaClassProvider classProvider = new CompiledJavaClassProvider(fo);
+        testClassProvider(classProvider);
+    }
 
-        ClassRepository classRepository = new ClassRepository().withClassProviders(compiledJavaClassProvider);
+    public void testClassProvider(ClassProvider classProvider) throws ClassNotFoundException {
+        assertEquals(classProvider.getResource("foo").getName(), "/foo");
+        assertFalse(classProvider.getResource("foo").exists());
+        Resource resource = classProvider.getResourceForClass(getClass().getName());
+        assertTrue(resource.exists());
+        assertTrue(resource.isClass());
+
+        ClassRepository classRepository = new ClassRepository().withClassProviders(classProvider);
         Class aClass = classRepository.getClass(getClass().getName());
-        assertEquals(getClass(), aClass); //Shares the same classloader
+        assertEquals(getClass(), aClass, "Classes should be the same as they share the classloader");
 
-        classRepository = new ClassRepository(false).withClassProviders(compiledJavaClassProvider);
+        classRepository = new ClassRepository(false).withClassProviders(classProvider);
         aClass = classRepository.getClass(getClass().getName());
-        assertNotEquals(getClass(), aClass); //Does not share the same classloader
+        assertNotEquals(getClass(), aClass, "Classes should NOT be the same as we explicitly told the ClassRepository not to use any predefined classloader");
+        classRepository.getClass(AnotherTopLevelClass.class.getName());
+        classRepository.getClass(AnotherTopLevelClass.StaticInnerClass.class.getName());
+        classRepository.getClass(AnotherTopLevelClass.InnerClass.class.getName());
     }
 
     @Test
@@ -43,19 +47,26 @@ public class JavaClassProvidersTest {
         if(sourceDir.isDirectory()) {
             FileSystemManager manager = VFS.getManager();
             FileObject fo = manager.resolveFile(sourceDir.toURI().toString());
-            final SourceJavaClassProvider sourceJavaClassProvider = new SourceJavaClassProvider(fo);
-            assertEquals(sourceJavaClassProvider.getResource("foo").getName(), "/foo");
-            assertFalse(sourceJavaClassProvider.getResource("foo").exists());
-            Resource resource = sourceJavaClassProvider.getResourceForClass(getClass().getName());
-            assertTrue(resource.exists());
-            assertTrue(resource.isClass());
-            ClassRepository classRepository = new ClassRepository(false).withClassProviders(sourceJavaClassProvider);
-            Class aClass = classRepository.getClass(getClass().getName());
-            assertNotEquals(aClass, getClass());
-            assertEquals(aClass.getName(), getClass().getName());
+            SourceJavaClassProvider classProvider = new SourceJavaClassProvider(fo);
+            ClassRepository classRepository = new ClassRepository(false).withClassProviders(classProvider);
+            try {
+                classRepository.getClass(AnotherTopLevelClass.class.getName());
+                fail("Initially, AnotherTopLevelClass should not be found");
+            } catch (ClassNotFoundException e) {
+                //Ok
+            }
+            testClassProvider(classProvider);
         } else {
             fail("TODO load source from as many locations as possible");
         }
     }
+
+}
+
+class AnotherTopLevelClass {
+
+    static class StaticInnerClass {}
+
+    class InnerClass {}
 
 }

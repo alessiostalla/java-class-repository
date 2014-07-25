@@ -34,7 +34,7 @@ public abstract class VFSResource implements Resource {
     @Override
     public boolean isNewerThan(long timestamp) {
         try {
-            return fileObject.getContent().getLastModifiedTime() > timestamp;
+            return fileObject.exists() && fileObject.getContent().getLastModifiedTime() > timestamp;
         } catch (FileSystemException e) {
             throw new RuntimeException(e);
         }
