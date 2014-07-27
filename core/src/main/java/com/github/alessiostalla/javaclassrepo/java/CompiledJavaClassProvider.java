@@ -5,8 +5,6 @@ import com.github.alessiostalla.javaclassrepo.vfs.VFSClassProvider;
 import com.github.alessiostalla.javaclassrepo.vfs.VFSResource;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.vfs2.FileObject;
-import org.apache.commons.vfs2.FileSystem;
-import org.apache.commons.vfs2.FileSystemException;
 
 import java.io.IOException;
 import java.net.URL;
@@ -21,8 +19,11 @@ public class CompiledJavaClassProvider extends VFSClassProvider {
         super(root);
     }
 
+    private String className;
+    private ClassLoader classLoader;
+
     @Override
-    protected VFSResource getResource(FileObject fileObject, final String className) {
+    protected VFSResource getResource(FileObject fileObject) {
         return new VFSResource(this, fileObject) {
             @Override
             public boolean isClass() {
@@ -30,23 +31,43 @@ public class CompiledJavaClassProvider extends VFSClassProvider {
             }
 
             @Override
-            public Class[] loadClasses(ClassRepository repository) throws ClassNotFoundException {
-                ClassLoader classLoader = new URLClassLoader(new URL[0], repository.asClassLoader()) {
-                    @Override
-                    public Class<?> loadClass(String name) throws ClassNotFoundException {
-                        if(name.equals(className)) {
-                            try {
-                                byte[] buf = IOUtils.toByteArray(fileObject.getContent().getInputStream());
-                                return defineClass(name, buf, 0, buf.length);
-                            } catch (IOException e) {
-                                throw new ClassNotFoundException(className, e);
-                            }
-                        } else {
-                            return super.loadClass(name);
+            public Class[] loadClasses(final ClassRepository repository) throws ClassNotFoundException {
+                String className = getName().substring(0, getName().length() - ".class".length()).replace("/", ".");
+                CompiledJavaClassProvider.this.className = className;
+                if(classLoader == null) {
+                    classLoader = createInnerLoader(repository);
+                }
+                Class<?> c = classLoader.loadClass(className);
+                classLoader = null;
+                CompiledJavaClassProvider.this.className = null;
+                return new Class[] {c};
+            }
+        };
+    }
+
+    protected URLClassLoader createInnerLoader(final ClassRepository repository) {
+        return new URLClassLoader(new URL[0]) {
+            @Override
+            public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if(name.equals(CompiledJavaClassProvider.this.className)) {
+                    VFSResource resource = getResourceForClass(name);
+                    try {
+                        byte[] buf = IOUtils.toByteArray(resource.getInputStream());
+                        Class<?> c = defineClass(name, buf, 0, buf.length);
+                        if(resolve) {
+                            resolveClass(c);
                         }
+                        return c;
+                    } catch (IOException e) {
+                        throw new ClassNotFoundException(name, e);
+                    } finally {
+                        IOUtils.closeQuietly(resource);
                     }
-                };
-                return new Class[] { classLoader.loadClass(className) };
+                } else try {
+                    return repository.getClass(name);
+                } catch (ClassNotFoundException e) {
+                    return super.loadClass(name, resolve);
+                }
             }
         };
     }

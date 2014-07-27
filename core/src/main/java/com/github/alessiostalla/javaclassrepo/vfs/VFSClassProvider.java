@@ -24,31 +24,31 @@ public abstract class VFSClassProvider implements ClassProvider {
     }
 
     @Override
-    public Resource getResourceForClass(String className) {
+    public VFSResource getResourceForClass(String className) {
         String path = translateToPath(className);
         return getResource(path, className);
     }
 
     @Override
-    public Resource getResource(String path) {
+    public VFSResource getResource(String path) {
         return getResource(path, null);
     }
 
-    protected Resource getResource(String path, String className) {
+    protected VFSResource getResource(String path, String className) {
         FileObject fileObject;
         try {
             fileObject = root.resolveFile(path);
         } catch (FileSystemException e) {
             throw new RuntimeException(e);
         }
-        return getResource(fileObject, className);
+        return getResource(fileObject);
     }
 
     public FileObject getRoot() {
         return root;
     }
 
-    protected abstract VFSResource getResource(FileObject fileObject, String className);
+    protected abstract VFSResource getResource(FileObject fileObject);
 
     protected abstract String translateToPath(String className);
 

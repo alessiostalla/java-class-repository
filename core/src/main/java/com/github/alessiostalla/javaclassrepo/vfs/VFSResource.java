@@ -34,7 +34,8 @@ public abstract class VFSResource implements Resource {
     @Override
     public boolean isNewerThan(long timestamp) {
         try {
-            return fileObject.exists() && fileObject.getContent().getLastModifiedTime() > timestamp;
+            boolean newer = fileObject.exists() && fileObject.getContent().getLastModifiedTime() > timestamp;
+            return newer;
         } catch (FileSystemException e) {
             throw new RuntimeException(e);
         }
@@ -66,7 +67,7 @@ public abstract class VFSResource implements Resource {
     @Override
     public String getName() {
         try {
-            return "/" + provider.getRoot().getName().getRelativeName(fileObject.getName());
+            return provider.getRoot().getName().getRelativeName(fileObject.getName());
         } catch (FileSystemException e) {
             throw new RuntimeException(e);
         }
@@ -75,5 +76,9 @@ public abstract class VFSResource implements Resource {
     @Override
     public String toString() {
         return super.toString() + " (file object: " + fileObject.getName().getFriendlyURI() + ")";
+    }
+
+    public FileObject getFileObject() {
+        return fileObject;
     }
 }

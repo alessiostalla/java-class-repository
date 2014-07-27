@@ -3,19 +3,10 @@ package com.github.alessiostalla.javaclassrepo.java;
 import com.github.alessiostalla.javaclassrepo.ClassRepository;
 import com.github.alessiostalla.javaclassrepo.vfs.VFSClassProvider;
 import com.github.alessiostalla.javaclassrepo.vfs.VFSResource;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.vfs2.FileObject;
-import org.apache.commons.vfs2.FileSystem;
-import org.apache.commons.vfs2.FileSystemException;
 
-import javax.lang.model.element.Modifier;
-import javax.lang.model.element.NestingKind;
 import javax.tools.*;
 import java.io.*;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -29,7 +20,7 @@ public class SourceJavaClassProvider extends VFSClassProvider {
     }
 
     @Override
-    protected VFSResource getResource(FileObject fileObject, final String className) {
+    protected VFSResource getResource(FileObject fileObject) {
         return new VFSResource(this, fileObject) {
             @Override
             public boolean isClass() {
@@ -38,6 +29,7 @@ public class SourceJavaClassProvider extends VFSClassProvider {
 
             @Override
             public Class[] loadClasses(ClassRepository repository) throws ClassNotFoundException {
+                String className = getName().substring(0, getName().length() - ".java".length()).replace("/", ".");
                 JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
                 VFSFileManager fileManager = new VFSFileManager<StandardJavaFileManager>(root, compiler.getStandardFileManager(null, null, null));
                 try {

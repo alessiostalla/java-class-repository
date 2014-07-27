@@ -9,10 +9,11 @@ import java.io.InputStream;
 public class NonExistingResource implements Resource {
 
     private final ClassProvider provider;
-    private String name;
+    private final String name;
 
-    public NonExistingResource(ClassProvider provider) {
+    public NonExistingResource(ClassProvider provider, String name) {
         this.provider = provider;
+        this.name = name;
     }
 
     @Override
@@ -52,7 +53,8 @@ public class NonExistingResource implements Resource {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    @Override
+    public String toString() {
+        return super.toString() + " - " + name;
     }
 }

@@ -9,13 +9,10 @@ import javax.lang.model.element.NestingKind;
 import javax.tools.*;
 import java.io.*;
 import java.net.URI;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
 
 /**
  * Created by alessio on 17/07/14.

@@ -1,5 +1,8 @@
 package com.github.alessiostalla.javaclassrepo;
 
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.Multimap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +28,9 @@ public class ClassRepository implements ClassProvider {
         }
     }
 
+    private final Multimap<String, String> dependencies = HashMultimap.create();
+    private String dependentClassName;
+
     public synchronized Class getClass(String className) throws ClassNotFoundException {
         for (ClassLoader classLoader : classLoaders) {
             try {
@@ -33,19 +39,37 @@ public class ClassRepository implements ClassProvider {
                 logger.debug("Class " + className + " not found in classloader " + classLoader, e);
             }
         }
-        long timestamp = System.currentTimeMillis();
-        ClassCacheEntry classCacheEntry = classCache.get(className);
-        if (classCacheEntry == null) {
-            loadClasses(className, timestamp);
-            classCacheEntry = classCache.get(className);
-        } else if (classCacheEntry.shouldReload()) {
-            classCacheEntry.reload(timestamp);
-            classCacheEntry = classCache.get(className);
-        }
-        if(classCacheEntry != null) {
-            return classCacheEntry.getLoadedClass();
-        } else {
-            throw new ClassNotFoundException(className);
+        String oldDependentClassName = dependentClassName;
+        dependentClassName = className;
+        try {
+            long timestamp = System.currentTimeMillis();
+            ClassCacheEntry classCacheEntry = classCache.get(className);
+            if (classCacheEntry == null) {
+                loadClasses(className, timestamp);
+                classCacheEntry = classCache.get(className);
+            } else {
+                for(ClassCacheEntry toReload : classCacheEntry.computeReload()) {
+                    toReload.reload(timestamp);
+                }
+                classCacheEntry = classCache.get(className);
+            }
+            if (classCacheEntry != null) {
+                if (oldDependentClassName != null) {
+                    dependencies.put(className, oldDependentClassName);
+                } else {
+                    //Call stack empty, record dependencies
+                    for (Map.Entry<String, String> e : dependencies.entries()) {
+                        ClassCacheEntry c1 = classCache.get(e.getKey());
+                        ClassCacheEntry c2 = classCache.get(e.getValue());
+                        c2.recordDependencyOn(c1);
+                    }
+                }
+                return classCacheEntry.getLoadedClass();
+            } else {
+                throw new ClassNotFoundException(className);
+            }
+        } finally {
+            dependentClassName = oldDependentClassName;
         }
     }
 
@@ -109,7 +133,7 @@ public class ClassRepository implements ClassProvider {
                 Class[] classes = resource.loadClasses(this);
                 List<ClassCacheEntry> entries = new ArrayList<ClassCacheEntry>(classes.length);
                 for(Class theClass : classes) {
-                    ClassCacheEntry entry = new ClassCacheEntry(theClass.getName(), theClass, timestamp, resource.getProvider());
+                    ClassCacheEntry entry = new ClassCacheEntry(resource, theClass.getName(), theClass, timestamp);
                     entries.add(entry);
                     classCache.put(theClass.getName(), entry);
                 }
@@ -133,7 +157,8 @@ public class ClassRepository implements ClassProvider {
                 return resource;
             }
         }
-        return new NonExistingResource(this);
+        //TODO inspect classCache too
+        return new NonExistingResource(this, "classes://" + className);
     }
 
     @Override
@@ -144,38 +169,66 @@ public class ClassRepository implements ClassProvider {
                 return resource;
             }
         }
-        return new NonExistingResource(this);
+        return new NonExistingResource(this, path);
     }
 
-    protected class ClassCacheEntry {
+    public class ClassCacheEntry {
+        public final String resourceName;
         public final String className;
         public final Class loadedClass;
         public final long timestamp;
         public final ClassProvider provider;
-        //TODO dependencies
+        private final Collection<ClassCacheEntry> dependencies = new LinkedHashSet<ClassCacheEntry>();
+        private final Collection<ClassCacheEntry> dependents = new LinkedHashSet<ClassCacheEntry>();
 
-        public ClassCacheEntry(String className, Class loadedClass, long timestamp, ClassProvider provider) {
+        public ClassCacheEntry(ClassProvider provider, String resourceName, String className, Class loadedClass, long timestamp) {
+            this.resourceName = resourceName;
             this.className = className;
             this.loadedClass = loadedClass;
             this.timestamp = timestamp;
             this.provider = provider;
         }
 
-        public boolean shouldReload() {
-            return provider.getResourceForClass(className).isNewerThan(timestamp);
+        public ClassCacheEntry(Resource resource, String className, Class loadedClass, long timestamp) {
+            this(resource.getProvider(), resource.getName(), className, loadedClass, timestamp);
+        }
+
+        public LinkedHashSet<ClassCacheEntry> computeReload() {
+            LinkedHashSet<ClassCacheEntry> reload = new LinkedHashSet<ClassCacheEntry>();
+            return computeReload(reload);
+        }
+
+        public LinkedHashSet<ClassCacheEntry> computeReload(LinkedHashSet<ClassCacheEntry> reload) {
+            for(ClassCacheEntry dep : dependencies) {
+                dep.computeReload(reload);
+            }
+            if((!reload.isEmpty() || provider.getResource(resourceName).isNewerThan(timestamp)) && !reload.contains(this)) {
+                reload.add(this);
+                for(ClassCacheEntry dep : dependents) {
+                    dep.computeReload(reload);
+                }
+            }
+            return reload;
         }
 
         public Collection<ClassCacheEntry> reload(long timestamp) throws ClassNotFoundException {
-            Class[] newClasses = provider.getResourceForClass(className).loadClasses(ClassRepository.this);
+            Class[] newClasses = provider.getResource(resourceName).loadClasses(ClassRepository.this);
             classCache.remove(className);
             //TODO remove other old classes (so inners that no longer exist get garbage-collected)
             List<ClassCacheEntry> newEntries = new ArrayList<ClassCacheEntry>(newClasses.length);
             for(Class newClass : newClasses) {
-                ClassCacheEntry newEntry = new ClassCacheEntry(className, newClass, timestamp, provider);
-                classCache.put(className, newEntry);
+                ClassCacheEntry newEntry = new ClassCacheEntry(provider, resourceName, newClass.getName(), newClass, timestamp);
+                classCache.put(newClass.getName(), newEntry);
                 newEntries.add(newEntry);
             }
             return newEntries;
+        }
+
+        public void recordDependencyOn(ClassCacheEntry... dependencies) {
+            for(ClassCacheEntry c : dependencies) {
+                this.dependencies.add(c);
+                c.dependents.add(this);
+            }
         }
 
         public Class getLoadedClass() throws ClassNotFoundException {
@@ -189,12 +242,20 @@ public class ClassRepository implements ClassProvider {
 
     public class ClassLoaderFacade extends ClassLoader {
         @Override
-        protected Class<?> findClass(String name) throws ClassNotFoundException {
-            Class<?> cls = ClassRepository.this.getClass(name);
+        public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            Class<?> cls = null;
+            try {
+                cls = ClassRepository.this.getClass(name);
+            } catch (ClassNotFoundException e) {
+                logger.trace("Class not found, delegating to super", e);
+            }
             if(cls != null) {
+                if(resolve) {
+                    resolveClass(cls);
+                }
                 return cls;
             } else {
-                throw new ClassNotFoundException(name);
+                return super.loadClass(name, resolve);
             }
         }
 
@@ -205,6 +266,10 @@ public class ClassRepository implements ClassProvider {
 
     public ClassLoaderFacade asClassLoader() {
         return new ClassLoaderFacade();
+    }
+
+    public Map<String, ClassCacheEntry> getClassCache() {
+        return classCache;
     }
 
 }
