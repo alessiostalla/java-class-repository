@@ -1,5 +1,6 @@
 package com.github.alessiostalla.javaclassrepo;
 
+import com.github.alessiostalla.javaclassrepo.groovy.GroovyClassProvider;
 import com.github.alessiostalla.javaclassrepo.java.CompiledJavaClassProvider;
 import com.github.alessiostalla.javaclassrepo.java.SourceJavaClassProvider;
 import com.github.alessiostalla.javaclassrepo.vfs.VFSResource;
@@ -14,31 +15,7 @@ import static org.testng.Assert.*;
 
 public class JavaClassProvidersTest {
 
-    @Test
-    public void testCompiledJavaClassProvider() throws Exception {
-        FileSystemManager manager = VFS.getManager();
-        FileObject fo = manager.resolveFile("res://");
-        final CompiledJavaClassProvider classProvider = new CompiledJavaClassProvider(fo);
-        testClassProvider(classProvider);
-        //Additional tests
-        ClassRepository classRepository = new ClassRepository(false).withClassProviders(classProvider);
-        Class staticInnerSubclass = classRepository.getClass(AnotherTopLevelClass.StaticInnerSubclass.class.getName());
-        VFSResource resource = classProvider.getResourceForClass(AnotherTopLevelClass.StaticInnerClass.class.getName());
-        long refTime = System.currentTimeMillis();
-        assertFalse(resource.isNewerThan(refTime));
-        resource.getFileObject().getContent().setLastModifiedTime(refTime + 1000);
-        assertTrue(resource.isNewerThan(refTime));
-        Class reloadedSubclass = classRepository.getClass(AnotherTopLevelClass.StaticInnerSubclass.class.getName());
-        assertFalse(staticInnerSubclass.equals(reloadedSubclass), "The class should have been reloaded due to changed dependencies");
-        while (resource.isNewerThan(System.currentTimeMillis())) {
-            Thread.sleep(500);
-        }
-        resource.getFileObject().getContent().setLastModifiedTime(refTime); //Why is this needed? Investigate
-        assertFalse(resource.isNewerThan(System.currentTimeMillis()));
-        assertTrue(reloadedSubclass.equals(classRepository.getClass(AnotherTopLevelClass.StaticInnerSubclass.class.getName())), "Now, no further reloading should happen");
-    }
-
-    public void testClassProvider(ClassProvider classProvider) throws ClassNotFoundException {
+    protected void testJavaClassProvider(ClassProvider classProvider) throws ClassNotFoundException {
         assertEquals(classProvider.getResource("foo").getName(), "foo");
         assertFalse(classProvider.getResource("foo").exists());
         Resource resource = classProvider.getResourceForClass(getClass().getName());
@@ -63,6 +40,30 @@ public class JavaClassProvidersTest {
     }
 
     @Test
+    public void testCompiledJavaClassProvider() throws Exception {
+        FileSystemManager manager = VFS.getManager();
+        FileObject fo = manager.resolveFile("res://");
+        final CompiledJavaClassProvider classProvider = new CompiledJavaClassProvider(fo);
+        testJavaClassProvider(classProvider);
+        //Additional tests
+        ClassRepository classRepository = new ClassRepository(false).withClassProviders(classProvider);
+        Class staticInnerSubclass = classRepository.getClass(AnotherTopLevelClass.StaticInnerSubclass.class.getName());
+        VFSResource resource = classProvider.getResourceForClass(AnotherTopLevelClass.StaticInnerClass.class.getName());
+        long refTime = System.currentTimeMillis();
+        assertFalse(resource.isNewerThan(refTime));
+        resource.getFileObject().getContent().setLastModifiedTime(refTime + 1000);
+        assertTrue(resource.isNewerThan(refTime));
+        Class reloadedSubclass = classRepository.getClass(AnotherTopLevelClass.StaticInnerSubclass.class.getName());
+        assertFalse(staticInnerSubclass.equals(reloadedSubclass), "The class should have been reloaded due to changed dependencies");
+        while (resource.isNewerThan(System.currentTimeMillis())) {
+            Thread.sleep(500);
+        }
+        resource.getFileObject().getContent().setLastModifiedTime(refTime); //Why is this needed? Investigate
+        assertFalse(resource.isNewerThan(System.currentTimeMillis()));
+        assertTrue(reloadedSubclass.equals(classRepository.getClass(AnotherTopLevelClass.StaticInnerSubclass.class.getName())), "Now, no further reloading should happen");
+    }
+
+    @Test
     public void testSourceClassProvider() throws Exception {
         File sourceDir = new File(new File("").getAbsoluteFile(), "core/src/test/java");
         if(sourceDir.isDirectory()) {
@@ -76,14 +77,14 @@ public class JavaClassProvidersTest {
             } catch (ClassNotFoundException e) {
                 //Ok
             }
-            testClassProvider(classProvider);
+            testJavaClassProvider(classProvider);
         } else {
             fail("TODO load source from as many locations as possible (sourceDir: " + sourceDir + ")");
         }
     }
 
     @Test
-    public void testBoth() throws Exception {
+    public void testSourceAndCompiledJava() throws Exception {
         FileSystemManager manager = VFS.getManager();
         FileObject fo = manager.resolveFile("res://");
         CompiledJavaClassProvider compiled = new CompiledJavaClassProvider(fo);
@@ -93,6 +94,23 @@ public class JavaClassProvidersTest {
         classRepository.getClass("com.github.alessiostalla.javaclassrepo.source.SourceSub");
         classRepository = new ClassRepository(false).withClassProviders(compiled, source);
         classRepository.getClass("com.github.alessiostalla.javaclassrepo.source.SourceSub");
+    }
+
+    @Test
+    public void testGroovyClassProvider() throws Exception {
+        FileSystemManager manager = VFS.getManager();
+        FileObject fo = manager.resolveFile("res://");
+        final GroovyClassProvider classProvider = new GroovyClassProvider(fo);
+        assertEquals(classProvider.getResource("foo").getName(), "foo");
+        assertFalse(classProvider.getResource("foo").exists());
+        String className = "com.github.alessiostalla.javaclassrepo.groovy.GroovySub";
+        Resource resource = classProvider.getResourceForClass(className);
+        assertTrue(resource.exists());
+        assertTrue(resource.isClass());
+
+        ClassRepository classRepository = new ClassRepository().withClassProviders(classProvider);
+        Class aClass = classRepository.getClass(className);
+        assertEquals(aClass.getName(), className);
     }
 
 }
